@@ -9,7 +9,7 @@ const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { body, param, query, validationResult } = require('express-validator');
-const Database = require("better-sqlite3");
+const Database = require("libsql");
 const path = require("path");
 const fs = require('fs');
 const multer = require('multer');
@@ -145,13 +145,18 @@ process.on('unhandledRejection', (reason) => {
 
 // ── Database Setup ──────────────────────────────────────────────────────────
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, "aquapets.db");
-const db = new Database(DB_PATH);
+const TURSO_DATABASE_URL = process.env.TURSO_DATABASE_URL;
+const TURSO_AUTH_TOKEN = process.env.TURSO_AUTH_TOKEN;
+
+const db = TURSO_DATABASE_URL
+  ? new Database(TURSO_DATABASE_URL, { authToken: TURSO_AUTH_TOKEN })
+  : new Database(DB_PATH);
 // Enable WAL mode for better performance
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+if (!TURSO_DATABASE_URL) db.pragma("journal_mode = WAL");
+if (!TURSO_DATABASE_URL) db.pragma("foreign_keys = ON");
 
 // Create tables
-db.exec(`
+if (!TURSO_DATABASE_URL) db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     name      TEXT    NOT NULL,
@@ -248,7 +253,7 @@ db.exec(`
 `);
 
 // Refresh tokens table for issuing long-lived refresh tokens (rotation supported)
-db.exec(`
+if (!TURSO_DATABASE_URL) db.exec(`
   CREATE TABLE IF NOT EXISTS refresh_tokens (
     token TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -258,7 +263,7 @@ db.exec(`
   );
 `);
 
-db.exec(`
+if (!TURSO_DATABASE_URL) db.exec(`
   CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
   CREATE INDEX IF NOT EXISTS idx_users_created_at ON users(created_at);
   CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
