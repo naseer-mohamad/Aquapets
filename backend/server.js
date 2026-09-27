@@ -144,8 +144,8 @@ process.on('unhandledRejection', (reason) => {
 });
 
 // ── Database Setup ──────────────────────────────────────────────────────────
-const db = new Database(path.join(__dirname, "aquapets.db"));
-
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, "aquapets.db");
+const db = new Database(DB_PATH);
 // Enable WAL mode for better performance
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
@@ -294,7 +294,9 @@ try {
 // ── Uploads directory & static serving ───────────────────────────────────
 const UPLOAD_DIR = process.env.UPLOAD_DIR || 'uploads';
 const UPLOAD_MAX_SIZE = parseInt(process.env.UPLOAD_MAX_SIZE || '2097152', 10);
-const uploadPath = path.join(__dirname, UPLOAD_DIR);
+const uploadPath = path.isAbsolute(UPLOAD_DIR)
+  ? UPLOAD_DIR
+  : path.join(__dirname, UPLOAD_DIR);
 try { if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true }); } catch (e) { console.warn('Failed to create upload directory:', e.message); }
 app.use('/uploads', express.static(uploadPath, {
   setHeaders: (res) => {
