@@ -4,6 +4,8 @@
  * API Base: /api
  */
 
+require('dotenv').config();
+
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
@@ -15,9 +17,16 @@ const fs = require('fs');
 const multer = require('multer');
 const crypto = require('crypto');
 const cookieParser = require('cookie-parser');
+const { v2: cloudinary } = require('cloudinary');
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+  secure: true
+});
 
 // Load environment variables from .env when present
-require('dotenv').config();
 
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -43,7 +52,7 @@ if (isProduction) {
   }
 }
 
-// ── Security / Production-ready defaults ───────────────────────────────────
+// â”€â”€ Security / Production-ready defaults â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.disable('x-powered-by');
 if (trustProxy > 0) app.set('trust proxy', trustProxy);
 app.use(helmet());
@@ -53,7 +62,7 @@ app.use(helmet.contentSecurityPolicy({
     defaultSrc: ["'self'"],
     scriptSrc: ["'self'"],
     styleSrc: ["'self'", "'unsafe-inline'"],
-    imgSrc: ["'self'", 'data:', 'blob:'],
+    imgSrc: ["'self'", 'data:', 'blob:', 'https://res.cloudinary.com'],
     connectSrc: ["'self'", process.env.CORS_ORIGIN || '*'],
     objectSrc: ["'none'"],
     ...(isProduction ? { upgradeInsecureRequests: [] } : {})
@@ -143,7 +152,7 @@ process.on('unhandledRejection', (reason) => {
   console.error('Unhandled rejection:', reason);
 });
 
-// ── Database Setup ──────────────────────────────────────────────────────────
+// â”€â”€ Database Setup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, "aquapets.db");
 const TURSO_DATABASE_URL = process.env.TURSO_DATABASE_URL;
 const TURSO_AUTH_TOKEN = process.env.TURSO_AUTH_TOKEN;
@@ -281,22 +290,22 @@ if (!TURSO_DATABASE_URL) db.exec(`
   CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
 `);
 
-// ── Ensure image columns exist for products ───────────────────────────────
+// â”€â”€ Ensure image columns exist for products â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 try {
   const pcols = db.prepare("PRAGMA table_info(products)").all();
   if (!pcols.find(c => c.name === 'image_path')) {
     db.prepare("ALTER TABLE products ADD COLUMN image_path TEXT").run();
-    console.log("✅ Added 'image_path' column to products table.");
+    console.log("âœ… Added 'image_path' column to products table.");
   }
   if (!pcols.find(c => c.name === 'image_gallery')) {
     db.prepare("ALTER TABLE products ADD COLUMN image_gallery TEXT DEFAULT '[]'").run();
-    console.log("✅ Added 'image_gallery' column to products table.");
+    console.log("âœ… Added 'image_gallery' column to products table.");
   }
 } catch (e) {
   console.warn("Image path migration skipped or failed:", e.message);
 }
 
-// ── Uploads directory & static serving ───────────────────────────────────
+// â”€â”€ Uploads directory & static serving â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const UPLOAD_DIR = process.env.UPLOAD_DIR || 'uploads';
 const UPLOAD_MAX_SIZE = parseInt(process.env.UPLOAD_MAX_SIZE || '2097152', 10);
 const uploadPath = path.isAbsolute(UPLOAD_DIR)
@@ -309,15 +318,8 @@ app.use('/uploads', express.static(uploadPath, {
   }
 }));
 
-// ── Multer configuration ─────────────────────────────────────────────────
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadPath),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const name = `${Date.now()}-${Math.random().toString(36).slice(2,8)}${ext}`;
-    cb(null, name);
-  }
-});
+// â”€â”€ Multer configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const storage = multer.memoryStorage();
 const allowedMimes = ['image/jpeg','image/png','image/webp'];
 const allowedExts = ['.jpg', '.jpeg', '.png', '.webp'];
 const upload = multer({
@@ -330,46 +332,46 @@ const upload = multer({
   limits: { fileSize: UPLOAD_MAX_SIZE }
 });
 
-// ── Migrate / Ensure role column ───────────────────────────────────────────
+// â”€â”€ Migrate / Ensure role column â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 try {
   const cols = db.prepare("PRAGMA table_info(users)").all();
   if (!cols.find(c => c.name === 'role')) {
     db.prepare("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'customer'").run();
     db.prepare("UPDATE users SET role = 'customer' WHERE role IS NULL").run();
-    console.log("✅ Added 'role' column to users table and set default 'customer'.");
+    console.log("âœ… Added 'role' column to users table and set default 'customer'.");
   }
 } catch (e) {
   console.warn("Role migration skipped or failed:", e.message);
 }
 
-// ── Ensure 'disabled' column exists for user management ───────────────────
+// â”€â”€ Ensure 'disabled' column exists for user management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 try {
   const cols2 = db.prepare("PRAGMA table_info(users)").all();
   if (!cols2.find(c => c.name === 'disabled')) {
     db.prepare("ALTER TABLE users ADD COLUMN disabled INTEGER DEFAULT 0").run();
     db.prepare("UPDATE users SET disabled = 0 WHERE disabled IS NULL").run();
-    console.log("✅ Added 'disabled' column to users table and set default 0.");
+    console.log("âœ… Added 'disabled' column to users table and set default 0.");
   }
 } catch (e) {
   console.warn("Disabled migration skipped or failed:", e.message);
 }
 
-// ── Ensure 'cancelled_at' and 'cancellation_reason' columns exist for orders ─
+// â”€â”€ Ensure 'cancelled_at' and 'cancellation_reason' columns exist for orders â”€
 try {
   const orderCols = db.prepare("PRAGMA table_info(orders)").all();
   if (!orderCols.find(c => c.name === 'cancelled_at')) {
     db.prepare("ALTER TABLE orders ADD COLUMN cancelled_at DATETIME").run();
-    console.log("✅ Added 'cancelled_at' column to orders table.");
+    console.log("âœ… Added 'cancelled_at' column to orders table.");
   }
   if (!orderCols.find(c => c.name === 'cancellation_reason')) {
     db.prepare("ALTER TABLE orders ADD COLUMN cancellation_reason TEXT").run();
-    console.log("✅ Added 'cancellation_reason' column to orders table.");
+    console.log("âœ… Added 'cancellation_reason' column to orders table.");
   }
 } catch (e) {
   console.warn("Order cancellation columns migration skipped or failed:", e.message);
 }
 
-// ── Seed Products ───────────────────────────────────────────────────────────
+// â”€â”€ Seed Products â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const productCount = db.prepare("SELECT COUNT(*) as cnt FROM products").get();
 
 // Validate phone number format
@@ -401,33 +403,33 @@ if (productCount.cnt === 0) {
     for (const p of products) insert.run(...p);
   });
   seedProducts([
-    ["Betta Splendens",      "fish",     349,   4.8, 12,  "🐠", "Vibrant red & blue crowntail betta. Hardy & beautiful.", "Bestseller"],
-    ["Neon Tetra (x6)",     "fish",     199,   4.6, 40,  "🐟", "Schooling fish with electric blue-red stripe.", null],
-    ["Goldfish Fancy",       "fish",     249,   4.5, 20,  "🐡", "Fancy oranda goldfish with wen growth.", null],
-    ["Clownfish",            "fish",     599,   4.9,  8,  "🐠", "Marine clownfish, bold orange & white stripes.", "Premium"],
-    ["Nano Cube 20L",        "tank",    2499,   4.7, 15,  "🪣", "Compact 20-litre all-in-one cube with LED & filter.", null],
-    ["Classic Bow 60L",      "tank",    4999,   4.8,  7,  "🐋", "Curved-front tank with built-in filtration system.", "Bestseller"],
-    ["Marine Reef 120L",     "tank",   11999,   4.9,  3,  "🌊", "Full reef setup with skimmer & LED coral spectrum.", "Premium"],
-    ["Planted 45L Kit",      "tank",    3799,   4.6, 10,  "🌿", "CO₂-ready planted tank with substrate & lights.", null],
-    ["Hikari Micro Pellets", "fishfood", 299,   4.9,100,  "🫙", "High-protein micro pellets for tropical fish.", "Bestseller"],
-    ["Tetra Color Flakes",   "fishfood", 199,   4.5, 80,  "🧂", "Color-enhancing flake food for community fish.", null],
-    ["Frozen Bloodworms",    "fishfood", 149,   4.7, 50,  "🧊", "Premium frozen bloodworms, 100g blister pack.", null],
-    ["Holland Lop Rabbit",   "pets",    2999,   4.9,  4,  "🐇", "Floppy-eared Holland Lop, very friendly & docile.", "Premium"],
-    ["Guinea Pig",           "pets",    1499,   4.7,  6,  "🐹", "Social & playful guinea pig, great for families.", null],
-    ["Hamster (Syrian)",     "pets",     799,   4.6, 10,  "🐭", "Golden Syrian hamster, active and curious.", null],
-    ["Royal Canin Small",    "petfood",  899,   4.8, 60,  "🍖", "Balanced diet kibble for small breed dogs.", "Bestseller"],
-    ["Whiskas Wet Cat",      "petfood",  249,   4.6, 90,  "🐈", "Tender tuna chunks in gravy, 12-pack.", null],
-    ["Rabbit Pellets 1kg",   "petfood",  349,   4.7, 40,  "🥕", "Timothy hay-based pellets, vitamin enriched.", null],
-    ["Java Fern Plant",      "aquarium", 179,   4.7, 35,  "🌱", "Hardy low-light aquatic plant, attaches to driftwood.", null],
-    ["Dragon Stone Set",     "aquarium", 499,   4.8, 20,  "🪨", "Natural volcanic dragon stones, 3-piece set.", null],
-    ["Aquarium Pump 300L/h", "aquarium", 699,   4.6, 25,  "⚙️", "Submersible motor pump, ultra-quiet operation.", null],
-    ["LED Reef Light",       "aquarium",1999,   4.9,  8,  "💡", "Full spectrum LED with timer & dimmer.", "Premium"],
-    ["Canister Filter 500L", "aquarium",3499,   4.8,  5,  "🔧", "External canister filter with 3-stage media.", "Bestseller"],
+    ["Betta Splendens",      "fish",     349,   4.8, 12,  "ðŸ ", "Vibrant red & blue crowntail betta. Hardy & beautiful.", "Bestseller"],
+    ["Neon Tetra (x6)",     "fish",     199,   4.6, 40,  "ðŸŸ", "Schooling fish with electric blue-red stripe.", null],
+    ["Goldfish Fancy",       "fish",     249,   4.5, 20,  "ðŸ¡", "Fancy oranda goldfish with wen growth.", null],
+    ["Clownfish",            "fish",     599,   4.9,  8,  "ðŸ ", "Marine clownfish, bold orange & white stripes.", "Premium"],
+    ["Nano Cube 20L",        "tank",    2499,   4.7, 15,  "ðŸª£", "Compact 20-litre all-in-one cube with LED & filter.", null],
+    ["Classic Bow 60L",      "tank",    4999,   4.8,  7,  "ðŸ‹", "Curved-front tank with built-in filtration system.", "Bestseller"],
+    ["Marine Reef 120L",     "tank",   11999,   4.9,  3,  "ðŸŒŠ", "Full reef setup with skimmer & LED coral spectrum.", "Premium"],
+    ["Planted 45L Kit",      "tank",    3799,   4.6, 10,  "ðŸŒ¿", "COâ‚‚-ready planted tank with substrate & lights.", null],
+    ["Hikari Micro Pellets", "fishfood", 299,   4.9,100,  "ðŸ«™", "High-protein micro pellets for tropical fish.", "Bestseller"],
+    ["Tetra Color Flakes",   "fishfood", 199,   4.5, 80,  "ðŸ§‚", "Color-enhancing flake food for community fish.", null],
+    ["Frozen Bloodworms",    "fishfood", 149,   4.7, 50,  "ðŸ§Š", "Premium frozen bloodworms, 100g blister pack.", null],
+    ["Holland Lop Rabbit",   "pets",    2999,   4.9,  4,  "ðŸ‡", "Floppy-eared Holland Lop, very friendly & docile.", "Premium"],
+    ["Guinea Pig",           "pets",    1499,   4.7,  6,  "ðŸ¹", "Social & playful guinea pig, great for families.", null],
+    ["Hamster (Syrian)",     "pets",     799,   4.6, 10,  "ðŸ­", "Golden Syrian hamster, active and curious.", null],
+    ["Royal Canin Small",    "petfood",  899,   4.8, 60,  "ðŸ–", "Balanced diet kibble for small breed dogs.", "Bestseller"],
+    ["Whiskas Wet Cat",      "petfood",  249,   4.6, 90,  "ðŸˆ", "Tender tuna chunks in gravy, 12-pack.", null],
+    ["Rabbit Pellets 1kg",   "petfood",  349,   4.7, 40,  "ðŸ¥•", "Timothy hay-based pellets, vitamin enriched.", null],
+    ["Java Fern Plant",      "aquarium", 179,   4.7, 35,  "ðŸŒ±", "Hardy low-light aquatic plant, attaches to driftwood.", null],
+    ["Dragon Stone Set",     "aquarium", 499,   4.8, 20,  "ðŸª¨", "Natural volcanic dragon stones, 3-piece set.", null],
+    ["Aquarium Pump 300L/h", "aquarium", 699,   4.6, 25,  "âš™ï¸", "Submersible motor pump, ultra-quiet operation.", null],
+    ["LED Reef Light",       "aquarium",1999,   4.9,  8,  "ðŸ’¡", "Full spectrum LED with timer & dimmer.", "Premium"],
+    ["Canister Filter 500L", "aquarium",3499,   4.8,  5,  "ðŸ”§", "External canister filter with 3-stage media.", "Bestseller"],
   ]);
-  console.log("✅ Products seeded.");
+  console.log("âœ… Products seeded.");
 }
 
-// ── Ensure admin user exists (configurable via env) ─────────────────────────
+// â”€â”€ Ensure admin user exists (configurable via env) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@aquapets.local';
@@ -440,7 +442,7 @@ try {
       const hashed = await bcrypt.hash(ADMIN_PASSWORD, 10);
       const avatar = ADMIN_NAME.slice(0,2).toUpperCase();
       db.prepare("INSERT INTO users (name, email, phone, password, avatar, role) VALUES (?, ?, ?, ?, ?, 'admin')").run(ADMIN_NAME, ADMIN_EMAIL, '', hashed, avatar);
-      console.log(`✅ Admin user created: ${ADMIN_EMAIL} (username: ${ADMIN_USERNAME})`);
+      console.log(`âœ… Admin user created: ${ADMIN_EMAIL} (username: ${ADMIN_USERNAME})`);
     } else {
       // ensure role is admin
       if ((admin.role || 'customer') !== 'admin') db.prepare("UPDATE users SET role = 'admin' WHERE id = ?").run(admin.id);
@@ -450,7 +452,7 @@ try {
   console.warn('Admin user bootstrap failed:', e.message);
 }
 
-// ── Auth Middleware ─────────────────────────────────────────────────────────
+// â”€â”€ Auth Middleware â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function authMiddleware(req, res, next) {
   const token = req.cookies && req.cookies.accessToken;
   if (!token) return res.status(401).json({ error: "Unauthorized. Please log in." });
@@ -462,7 +464,7 @@ function authMiddleware(req, res, next) {
   }
 }
 
-// ── Admin Middleware ───────────────────────────────────────────────────────
+// â”€â”€ Admin Middleware â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function adminMiddleware(req, res, next) {
   if (!req.user) return res.status(401).json({ error: "Unauthorized. Please log in." });
   if ((req.user.role || 'customer') !== 'admin') return res.status(403).json({ error: "Forbidden. Admins only." });
@@ -481,15 +483,21 @@ const adminLimiter = rateLimit({
 // Apply admin limiter to all admin routes
 app.use('/api/admin', adminLimiter);
 
-// ── ROUTES ──────────────────────────────────────────────────────────────────
+// â”€â”€ ROUTES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // Health check
-app.get("/api/health", (req, res) => res.json({ status: "ok", message: "AquaPets API running 🐠" }));
+app.get("/api/health", (req, res) => res.json({ status: "ok", message: "AquaPets API running ðŸ " }));
 
 function normalizeProductImagePath(imagePath) {
   if (!imagePath) return null;
+
   let normalized = String(imagePath).trim().replace(/\\/g, '/');
-  normalized = normalized.replace(/^https?:\/\/[^/]+\//i, '').replace(/^\/+/, '');
+  if (!normalized) return null;
+
+  // Keep Cloudinary and other remote HTTPS/HTTP URLs unchanged.
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+
+  normalized = normalized.replace(/^\/+/, '');
 
   const uploadsMarker = '/uploads/';
   const markerIndex = normalized.indexOf(uploadsMarker);
@@ -505,49 +513,137 @@ function normalizeProductImagePath(imagePath) {
 
 function productImageFilePath(imagePath) {
   const normalized = normalizeProductImagePath(imagePath);
-  return normalized ? path.join(uploadPath, path.basename(normalized)) : null;
+
+  // Cloudinary images do not exist on the local filesystem.
+  if (!normalized || /^https?:\/\//i.test(normalized)) return null;
+
+  return path.join(uploadPath, path.basename(normalized));
 }
 
 function normalizeProductGallery(value) {
   if (!value) return [];
-  const parsed = Array.isArray(value) ? value : (() => { try { return JSON.parse(value); } catch { return []; } })();
+
+  const parsed = Array.isArray(value)
+    ? value
+    : (() => {
+        try { return JSON.parse(value); } catch { return []; }
+      })();
+
   if (!Array.isArray(parsed)) return [];
+
   const list = [];
   for (const item of parsed) {
     if (!item) continue;
+
     const s = typeof item === 'string' ? item.trim() : String(item).trim();
     if (!s) continue;
+
     const normalized = normalizeProductImagePath(s);
-    if (normalized) list.push(`/${normalized}`);
+    if (normalized) list.push(normalized);
   }
+
   return list;
 }
 
 // Helper: attach browser-loadable image URL to a product object (if image_path present)
 function attachImageUrlToProduct(product, req) {
   if (!product) return product;
+
   const p = { ...product };
   const gallery = normalizeProductGallery(p.image_gallery);
   const direct = p.image_path ? normalizeProductImagePath(p.image_path) : null;
 
   if (direct) {
     p.image_path = direct;
-    p.image_url = `/${direct}`;
+    p.image_url = direct;
   }
 
   if (gallery.length) {
     p.gallery = gallery;
   } else if (direct) {
-    p.gallery = [`/${direct}`];
+    p.gallery = [direct];
   }
 
   if (!p.gallery && direct) {
-    p.gallery = [`/${direct}`];
+    p.gallery = [direct];
   }
 
   return p;
 }
 
+function getCloudinaryPublicIdFromUrl(imageUrl) {
+  if (!imageUrl || !/^https?:\/\/res\.cloudinary\.com\//i.test(String(imageUrl))) {
+    return null;
+  }
+
+  try {
+    const url = new URL(String(imageUrl));
+    const parts = url.pathname.split('/').filter(Boolean);
+    const uploadIndex = parts.indexOf('upload');
+
+    if (uploadIndex < 0) return null;
+
+    let publicParts = parts.slice(uploadIndex + 1);
+
+    // Remove Cloudinary transformation components such as f_auto,q_auto.
+    while (
+      publicParts.length &&
+      /^[a-z]{1,4}_[^/]+(?:,[a-z]{1,4}_[^/]+)*$/i.test(publicParts[0])
+    ) {
+      publicParts.shift();
+    }
+
+    // Remove the version component, e.g. v1791001394.
+    if (publicParts.length && /^v\d+$/.test(publicParts[0])) {
+      publicParts.shift();
+    }
+
+    if (!publicParts.length) return null;
+
+    const last = publicParts[publicParts.length - 1];
+    publicParts[publicParts.length - 1] = last.replace(/\.[^.]+$/, '');
+
+    return publicParts.join('/');
+  } catch (e) {
+    return null;
+  }
+}
+
+async function deleteCloudinaryImage(imageUrl) {
+  const publicId = getCloudinaryPublicIdFromUrl(imageUrl);
+  if (!publicId) return false;
+
+  try {
+    const result = await cloudinary.uploader.destroy(publicId, {
+      resource_type: 'image',
+      invalidate: true
+    });
+
+    return result && (result.result === 'ok' || result.result === 'not found');
+  } catch (e) {
+    console.warn('Cloudinary image deletion failed:', e.message);
+    return false;
+  }
+}
+function uploadImageBufferToCloudinary(fileBuffer, publicId) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: 'aquapets/products',
+        public_id: publicId,
+        resource_type: 'image',
+        overwrite: true,
+        invalidate: true
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+
+    stream.end(fileBuffer);
+  });
+}
 // --- Refresh token helpers ---
 function generateRefreshToken() {
   return crypto.randomBytes(48).toString('hex');
@@ -594,7 +690,7 @@ function setAccessCookie(res, token) {
   });
 }
 
-// ── AUTH ────────────────────────────────────────────────────────────────────
+// â”€â”€ AUTH â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post("/api/auth/signup", authLimiter,
   [
     body('name').trim().notEmpty().withMessage('Name is required.'),
@@ -720,7 +816,7 @@ app.post('/api/auth/logout', authMiddleware, (req, res) => {
   res.json({ message: 'Logged out.' });
 });
 
-// ── ADMIN ROUTES ──────────────────────────────────────────────────────────
+// â”€â”€ ADMIN ROUTES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // List users (admin only)
 app.get("/api/admin/users", authMiddleware, adminMiddleware, (req, res) => {
   const users = db.prepare("SELECT id, name, email, phone, avatar, role, created_at FROM users ORDER BY id ASC").all();
@@ -751,61 +847,138 @@ app.post("/api/admin/products", authMiddleware, adminMiddleware,
   res.status(201).json(attachImageUrlToProduct(product, req));
 });
 
-// ── Upload / Replace product image(s) (admin only)
+// â”€â”€ Upload / Replace product image(s) (admin only)
 app.post('/api/admin/products/:id/image', authMiddleware, adminMiddleware, (req, res, next) => {
   const handler = upload.fields([
     { name: 'images', maxCount: 10 },
     { name: 'image', maxCount: 10 }
   ]);
+
   handler(req, res, async function (err) {
     if (err) return res.status(400).json({ error: err.message || 'Invalid upload.' });
+
     const id = Number(req.params.id);
     const uploadedFiles = req.files ? Object.values(req.files).flat() : [];
+
     if (Number.isNaN(id)) {
-      if (uploadedFiles.length) uploadedFiles.forEach(f => { try { fs.unlinkSync(f.path); } catch (e) {} });
       return res.status(400).json({ error: 'Invalid product id.' });
     }
+
     const product = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
     if (!product) {
-      if (uploadedFiles.length) uploadedFiles.forEach(f => { try { fs.unlinkSync(f.path); } catch (e) {} });
       return res.status(404).json({ error: 'Product not found.' });
     }
+
+    if (!uploadedFiles.length) {
+      return res.status(400).json({ error: 'At least one image is required.' });
+    }
+
     try {
-      const uploaded = uploadedFiles.map(file => `uploads/${file.filename}`);
-      const previousGallery = normalizeProductGallery(product.image_gallery);
-      if (previousGallery.length) {
-        previousGallery.forEach(file => {
-          try {
-            const prev = productImageFilePath(file);
-            if (prev && fs.existsSync(prev)) fs.unlinkSync(prev);
-          } catch (e) { /* ignore */ }
-        });
-      }
+      const uploaded = [];
+      const uploadedPublicIds = [];
+
+      for (let index = 0; index < uploadedFiles.length; index++) {
+        const file = uploadedFiles[index];
+
+        const publicId = index === 0
+          ? `product-${id}`
+          : `product-${id}-${Date.now()}-${index}`;
+
+        const result = await uploadImageBufferToCloudinary(
+          file.buffer,
+          publicId
+        );
+
+        if (!result || !result.secure_url) {
+          throw new Error('Cloudinary did not return an image URL.');
+        }
+
+	uploaded.push(result.secure_url);
+uploadedPublicIds.push(result.public_id);      }
+
+      // Remove previous Cloudinary images after the new upload succeeds.
+      const previousImages = [];
+
       if (product.image_path) {
-        try { const prev = productImageFilePath(product.image_path); if (prev && fs.existsSync(prev)) fs.unlinkSync(prev); } catch(e) { /* ignore */ }
+        previousImages.push(product.image_path);
       }
+
+      const previousGallery = normalizeProductGallery(product.image_gallery);
+      for (const imageUrl of previousGallery) {
+        if (!previousImages.includes(imageUrl)) {
+          previousImages.push(imageUrl);
+        }
+      }
+
+      for (const imageUrl of previousImages) {
+        const previousPublicId = getCloudinaryPublicIdFromUrl(imageUrl);
+
+  if (previousPublicId && uploadedPublicIds.includes(previousPublicId)) {
+    continue;
+  }
+
+  await deleteCloudinaryImage(imageUrl);
+}
       const nextGallery = JSON.stringify(uploaded);
-      db.prepare('UPDATE products SET image_path = ?, image_gallery = ? WHERE id = ?').run(uploaded[0] || null, nextGallery, id);
-      const updated = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+
+      db.prepare(
+        'UPDATE products SET image_path = ?, image_gallery = ? WHERE id = ?'
+      ).run(uploaded[0] || null, nextGallery, id);
+
+      const updated = db.prepare(
+        'SELECT * FROM products WHERE id = ?'
+      ).get(id);
+
       res.json(attachImageUrlToProduct(updated, req));
     } catch (e) {
-      if (uploadedFiles.length) uploadedFiles.forEach(f => { try { fs.unlinkSync(f.path); } catch (e) {} });
       next(e);
     }
   });
 });
 
 // ── Delete product image (admin only)
-app.delete('/api/admin/products/:id/image', authMiddleware, adminMiddleware, (req, res) => {
+app.delete('/api/admin/products/:id/image', authMiddleware, adminMiddleware, async (req, res, next) => {
   const id = Number(req.params.id);
-  if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid product id.' });
-  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
-  if (!product) return res.status(404).json({ error: 'Product not found.' });
-  if (product.image_path) {
-    try { const p = productImageFilePath(product.image_path); if (p && fs.existsSync(p)) fs.unlinkSync(p); } catch (e) { /* ignore */ }
-    db.prepare('UPDATE products SET image_path = NULL WHERE id = ?').run(id);
+
+  if (Number.isNaN(id)) {
+    return res.status(400).json({ error: 'Invalid product id.' });
   }
-  res.json({ message: 'Image removed.' });
+
+  const product = db.prepare(
+    'SELECT * FROM products WHERE id = ?'
+  ).get(id);
+
+  if (!product) {
+    return res.status(404).json({ error: 'Product not found.' });
+  }
+
+  try {
+    const images = [];
+
+    if (product.image_path) {
+      images.push(product.image_path);
+    }
+
+    const gallery = normalizeProductGallery(product.image_gallery);
+
+    for (const imageUrl of gallery) {
+      if (!images.includes(imageUrl)) {
+        images.push(imageUrl);
+      }
+    }
+
+    for (const imageUrl of images) {
+      await deleteCloudinaryImage(imageUrl);
+    }
+
+    db.prepare(
+      'UPDATE products SET image_path = NULL, image_gallery = ? WHERE id = ?'
+    ).run('[]', id);
+
+    res.json({ message: 'Image removed.' });
+  } catch (e) {
+    next(e);
+  }
 });
 
 // Update product (admin only)
@@ -839,14 +1012,14 @@ app.delete("/api/admin/products/:id", authMiddleware, adminMiddleware, (req, res
   res.json({ message: 'Product deleted.' });
 });
 
-// ── USER PROFILE ────────────────────────────────────────────────────────────
+// â”€â”€ USER PROFILE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get("/api/user/profile", authMiddleware, (req, res) => {
   const user = db.prepare("SELECT id, name, email, phone, avatar, role, disabled, created_at FROM users WHERE id = ?").get(req.user.id);
   if (!user) return res.status(404).json({ error: "User not found." });
   res.json(user);
 });
 
-// ── ADMIN: Orders & Management ───────────────────────────────────────────
+// â”€â”€ ADMIN: Orders & Management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get("/api/admin/orders", authMiddleware, adminMiddleware, (req, res) => {
   const orders = db.prepare("SELECT o.*, u.name as user_name, u.email as user_email FROM orders o JOIN users u ON o.user_id = u.id ORDER BY o.created_at DESC").all();
   const result = orders.map(o => ({
@@ -1064,7 +1237,7 @@ app.put("/api/user/password", authMiddleware, async (req, res) => {
   res.json({ message: "Password updated successfully." });
 });
 
-// ── PRODUCTS ────────────────────────────────────────────────────────────────
+// â”€â”€ PRODUCTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get("/api/products", (req, res) => {
   const { category, search } = req.query;
   let query = "SELECT * FROM products WHERE 1=1";
@@ -1094,7 +1267,7 @@ app.get("/api/products/:id", (req, res) => {
   res.json(attachImageUrlToProduct(product, req));
 });
 
-// ── CART ─────────────────────────────────────────────────────────────────────
+// â”€â”€ CART â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get("/api/cart", authMiddleware, (req, res) => {
   const items = db.prepare(`
     SELECT c.id, c.qty, p.id as product_id, p.name, p.price, p.emoji, p.category, p.stock
@@ -1132,7 +1305,7 @@ app.delete("/api/cart", authMiddleware, (req, res) => {
   res.json({ message: "Cart cleared." });
 });
 
-// ── WISHLIST ──────────────────────────────────────────────────────────────
+// â”€â”€ WISHLIST â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get('/api/wishlist', authMiddleware, (req, res) => {
   const rows = db.prepare(`SELECT p.* FROM wishlist w JOIN products p ON w.product_id = p.id WHERE w.user_id = ? ORDER BY w.created_at DESC`).all(req.user.id);
   res.json(rows.map(r => attachImageUrlToProduct(r, req)));
@@ -1155,7 +1328,7 @@ app.delete('/api/wishlist/:productId', authMiddleware, (req, res) => {
   res.json({ message: 'Removed from wishlist.' });
 });
 
-// ── ORDERS ───────────────────────────────────────────────────────────────────
+// â”€â”€ ORDERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post("/api/orders", authMiddleware, [ body('items').isArray({ min: 1 }).withMessage('Items array is required.'), body('method').trim().notEmpty().withMessage('Payment method is required.'), body('address').trim().notEmpty().withMessage('Address is required.') ], handleValidation, (req, res) => {
   const { items, method, address } = req.body;
   if (!items || !Array.isArray(items) || !items.length) return res.status(400).json({ error: "Cart is empty." });
@@ -1187,7 +1360,7 @@ app.post("/api/orders", authMiddleware, [ body('items').isArray({ min: 1 }).with
     }
     db.prepare("DELETE FROM cart_items WHERE user_id = ?").run(req.user.id);
     // Create notification
-    db.prepare("INSERT INTO notifications (user_id, type, message) VALUES (?, ?, ?)").run(req.user.id, "order", `Your order #AQ${order.lastInsertRowid} has been confirmed! 🎉`);
+    db.prepare("INSERT INTO notifications (user_id, type, message) VALUES (?, ?, ?)").run(req.user.id, "order", `Your order #AQ${order.lastInsertRowid} has been confirmed! ðŸŽ‰`);
     return order.lastInsertRowid;
   });
 
@@ -1279,7 +1452,7 @@ app.patch('/api/orders/:id/cancel', authMiddleware,
   });
 });
 
-// ── ADDRESSES ────────────────────────────────────────────────────────────────
+// â”€â”€ ADDRESSES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get("/api/addresses", authMiddleware, (req, res) => {
   res.json(db.prepare("SELECT * FROM addresses WHERE user_id = ?").all(req.user.id));
 });
@@ -1297,7 +1470,7 @@ app.delete("/api/addresses/:id", authMiddleware, (req, res) => {
   res.json({ message: "Address deleted." });
 });
 
-// ── NOTIFICATIONS ─────────────────────────────────────────────────────────────
+// â”€â”€ NOTIFICATIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get("/api/notifications", authMiddleware, (req, res) => {
   res.json(db.prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 20").all(req.user.id));
 });
@@ -1307,7 +1480,7 @@ app.put("/api/notifications/read", authMiddleware, (req, res) => {
   res.json({ message: "All notifications marked as read." });
 });
 
-// ── CONTACT (public) ───────────────────────────────────────────────────────
+// â”€â”€ CONTACT (public) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post('/api/contact', [ body('name').trim().notEmpty().withMessage('Name is required.'), body('email').trim().isEmail().withMessage('Valid email is required.'), body('message').trim().notEmpty().withMessage('Message is required.') ], handleValidation, (req, res) => {
   const { name, email, phone, message } = req.body;
   const stmt = db.prepare('INSERT INTO contact_messages (name, email, phone, message) VALUES (?, ?, ?, ?)');
@@ -1331,7 +1504,7 @@ app.get('/api/contact/:id', authMiddleware, (req, res) => {
   res.json(msg);
 });
 
-// ── ADMIN: Contact management ──────────────────────────────────────────────
+// â”€â”€ ADMIN: Contact management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get('/api/admin/contacts', authMiddleware, adminMiddleware, (req, res) => {
   const msgs = db.prepare('SELECT id, name, email, phone, is_replied, created_at FROM contact_messages ORDER BY created_at DESC').all();
   res.json(msgs);
@@ -1358,7 +1531,7 @@ app.delete('/api/admin/contacts/:id', authMiddleware, adminMiddleware, (req, res
   res.json({ message: 'Message deleted.' });
 });
 
-// ── Start Server ─────────────────────────────────────────────────────────────
+// â”€â”€ Start Server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Centralized error handler (must be after routes)
 app.use((err, req, res, next) => {
   console.error(err && err.stack ? err.stack : err);
@@ -1370,6 +1543,6 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   const serverOrigin = isProduction ? 'https://aquapets.com' : `http://localhost:${PORT}`;
-  console.log(`\n🐠 AquaPets API running at ${serverOrigin}`);
-  console.log(`📋 Health check at ${serverOrigin}/api/health\n`);
+  console.log(`\nðŸ  AquaPets API running at ${serverOrigin}`);
+  console.log(`ðŸ“‹ Health check at ${serverOrigin}/api/health\n`);
 });
