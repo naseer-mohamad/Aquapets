@@ -70,7 +70,21 @@ app.use(helmet.contentSecurityPolicy({
 }));
 
 // CORS: allow explicit origin via env in production
-app.use(cors({ origin: corsOrigin === '*' ? true : corsOrigin, credentials: true }));
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'https://aquapets-delta.vercel.app'
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin) || origin === corsOrigin) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS: ' + origin));
+  },
+  credentials: true
+}));
 
 // Limit request body size to avoid large payload abuse
 app.use(express.json({ limit: '10kb' }));
@@ -729,7 +743,8 @@ app.post("/api/auth/login", authLimiter,
   async (req, res) => {
   const { email: identifier, password } = req.body;
 
-  const isAdminLogin = identifier === ADMIN_USERNAME;
+  const isAdminLogin =
+  identifier === ADMIN_USERNAME || identifier === ADMIN_EMAIL;
   const user = db.prepare("SELECT * FROM users WHERE email = ?").get(isAdminLogin ? ADMIN_EMAIL : identifier);
   if (!user) return res.status(404).json({ error: "No account found. Please sign up." });
 
