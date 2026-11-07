@@ -676,11 +676,21 @@ function revokeRefreshToken(token) {
 }
 
 function clearRefreshCookie(res) {
-  res.cookie('refreshToken', '', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 0 });
+  res.cookie('refreshToken', '', {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+  maxAge: 0
+});
 }
 
 function setRefreshCookie(res, token, ttlMs) {
-  const opts = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: ttlMs };
+  const opts = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    maxAge: ttlMs
+};
   res.cookie('refreshToken', token, opts);
 }
 
@@ -692,14 +702,19 @@ function getAccessCookieMaxAge() {
 }
 
 function clearAccessCookie(res) {
-  res.cookie('accessToken', '', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 0 });
+  res.cookie('accessToken', '', {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+  maxAge: 0
+});
 }
 
 function setAccessCookie(res, token) {
   res.cookie('accessToken', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: getAccessCookieMaxAge()
   });
 }
